@@ -31,18 +31,19 @@ var (
 	ErrBadVersion = errors.New("bad version")
 )
 
-// Request is a replay client request.
+// Request is a relay client request.
 // Protocol spec:
-// +-----+---------+----+---+-----+----+
-// | VER |  FLAGS  | FEALEN | FEATURES |
-// +-----+---------+----+---+-----+----+
-// |  1  |    1    |    2   |    VAR   |
-// +-----+---------+--------+----------+
 //
-// VER - protocol version, 1 byte.
-// FLAGS - flags, 1 byte.
-// FEALEN - length of features, 2 bytes.
-// FEATURES - feature list.
+//	+-----+---------+----+---+-----+----+
+//	| VER |  FLAGS  | FEALEN | FEATURES |
+//	+-----+---------+----+---+-----+----+
+//	|  1  |    1    |    2   |    VAR   |
+//	+-----+---------+--------+----------+
+//
+//	VER - protocol version, 1 byte.
+//	FLAGS - flags, 1 byte.
+//	FEALEN - length of features, 2 bytes.
+//	FEATURES - feature list.
 type Request struct {
 	Version  uint8
 	Flags    uint8
@@ -128,18 +129,18 @@ func (req *Request) WriteTo(w io.Writer) (n int64, err error) {
 	return buf.WriteTo(w)
 }
 
-// Response is a replay server response.
+// Response is a relay server response.
 // Protocol spec:
-// +-----+--------+----+---+-----+----+
-// | VER | STATUS | FEALEN | FEATURES |
-// +-----+--------+----+---+-----+----+
-// |  1  |    1   |    2   |    VAR   |
-// +-----+--------+--------+----------+
+//	+-----+--------+----+---+-----+----+
+//	| VER | STATUS | FEALEN | FEATURES |
+//	+-----+--------+----+---+-----+----+
+//	|  1  |    1   |    2   |    VAR   |
+//	+-----+--------+--------+----------+
 //
-// VER - protocol version, 1 byte.
-// STATUS - server status, 1 byte.
-// FEALEN - length of features, 2 bytes.
-// FEATURES - feature list.
+//	VER - protocol version, 1 byte.
+//	STATUS - server status, 1 byte.
+//	FEALEN - length of features, 2 bytes.
+//	FEATURES - feature list.
 type Response struct {
 	Version  uint8
 	Status   uint8

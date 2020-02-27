@@ -29,16 +29,18 @@ var (
 )
 
 // Feature represents a feature the client or server owned.
-// Protocol spec:
-// +------+----------+------+
-// | TYPE |  LEN  | FEATURE |
-// +------+-------+---------+
-// |  1   |   2   |   VAR   |
-// +------+-------+---------+
 //
-// TYPE - feature type, 1 byte.
-// LEN - length of feature data, 2 bytes.
-// FEATURE - feature data.
+// Protocol spec:
+//
+//	+------+----------+------+
+//	| TYPE |  LEN  | FEATURE |
+//	+------+-------+---------+
+//	|  1   |   2   |   VAR   |
+//	+------+-------+---------+
+//
+//	TYPE - feature type, 1 byte.
+//	LEN - length of feature data, 2 bytes.
+//	FEATURE - feature data.
 type Feature interface {
 	Type() uint8
 	Encode() ([]byte, error)
@@ -72,16 +74,19 @@ func ReadFeature(r io.Reader) (Feature, error) {
 
 // UserAuthFeature is a relay feature,
 // it contains the username and password for user authentication on server side.
+//
 // Protocol spec:
-// +------+----------+------+----------+
-// | ULEN |  UNAME   | PLEN |  PASSWD  |
-// +------+----------+------+----------+
-// |  1   | 0 to 255 |  1   | 1 to 255 |
-// +------+----------+------+----------+
-// ULEN - length of username field, 1 byte.
-// UNAME - username, variable length, 0 to 255 bytes, 0 means no username.
-// PLEN - length of password field, 1 byte.
-// PASSWD - password, variable length, 0 to 255 bytes, 0 means no password.
+//
+//	+------+----------+------+----------+
+//	| ULEN |  UNAME   | PLEN |  PASSWD  |
+//	+------+----------+------+----------+
+//	|  1   | 0 to 255 |  1   | 1 to 255 |
+//	+------+----------+------+----------+
+//
+//	ULEN - length of username field, 1 byte.
+//	UNAME - username, variable length, 0 to 255 bytes, 0 means no username.
+//	PLEN - length of password field, 1 byte.
+//	PASSWD - password, variable length, 0 to 255 bytes, 0 means no password.
 type UserAuthFeature struct {
 	Username string
 	Password string
@@ -139,20 +144,21 @@ func (f *UserAuthFeature) Decode(b []byte) error {
 
 // TargetAddrFeature is a relay feature,
 // it contains the IP and port the client want to connect to.
+//
 // Server may restrict the IP, port or port range that the client can relay to.
 // Server should specify a default IP:PORT for client without this feature.
 //
 // Protocol spec:
-// +------+----------+----------+
-// | ATYP |   ADDR   |   PORT   |
-// +------+----------+----------+
-// |  1   | Variable |    2     |
-// +------+----------+----------+
+//	+------+----------+----------+
+//	| ATYP |   ADDR   |   PORT   |
+//	+------+----------+----------+
+//	|  1   | Variable |    2     |
+//	+------+----------+----------+
 //
-// ATYP - address type, 0x01 - IPv4, 0x03 - domain name, 0x04 - IPv6. 1 byte.
-// ADDR - host address, IPv4, IPV6 or doman name based on ATYP.
+//	ATYP - address type, 0x01 - IPv4, 0x03 - domain name, 0x04 - IPv6. 1 byte.
+//	ADDR - host address, IPv4, IPV6 or doman name based on ATYP.
 // For domain name, the first byte is the length of the domain name.
-// PORT - port number, 1 byte.
+//	PORT - port number, 1 byte.
 type TargetAddrFeature struct {
 	AType uint8
 	Host  string
