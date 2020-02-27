@@ -32,8 +32,8 @@ var (
 )
 
 // Request is a relay client request.
-// Protocol spec:
 //
+// Protocol spec:
 //	+-----+---------+----+---+-----+----+
 //	| VER |  FLAGS  | FEALEN | FEATURES |
 //	+-----+---------+----+---+-----+----+
@@ -130,6 +130,7 @@ func (req *Request) WriteTo(w io.Writer) (n int64, err error) {
 }
 
 // Response is a relay server response.
+//
 // Protocol spec:
 //	+-----+--------+----+---+-----+----+
 //	| VER | STATUS | FEALEN | FEATURES |

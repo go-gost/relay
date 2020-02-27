@@ -31,7 +31,6 @@ var (
 // Feature represents a feature the client or server owned.
 //
 // Protocol spec:
-//
 //	+------+----------+------+
 //	| TYPE |  LEN  | FEATURE |
 //	+------+-------+---------+
@@ -76,7 +75,6 @@ func ReadFeature(r io.Reader) (Feature, error) {
 // it contains the username and password for user authentication on server side.
 //
 // Protocol spec:
-//
 //	+------+----------+------+----------+
 //	| ULEN |  UNAME   | PLEN |  PASSWD  |
 //	+------+----------+------+----------+
@@ -156,8 +154,7 @@ func (f *UserAuthFeature) Decode(b []byte) error {
 //	+------+----------+----------+
 //
 //	ATYP - address type, 0x01 - IPv4, 0x03 - domain name, 0x04 - IPv6. 1 byte.
-//	ADDR - host address, IPv4, IPV6 or doman name based on ATYP.
-// For domain name, the first byte is the length of the domain name.
+//	ADDR - host address, IPv4, IPV6 or doman name based on ATYP. For domain name, the first byte is the length of the domain name.
 //	PORT - port number, 1 byte.
 type TargetAddrFeature struct {
 	AType uint8
