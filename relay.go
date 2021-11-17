@@ -9,6 +9,7 @@ import (
 
 const (
 	Version1 = 0x01
+	Version2 = 0x02
 )
 
 // request flags
@@ -25,6 +26,8 @@ const (
 	StatusForbidden          = 0x03
 	StatusTimeout            = 0x04
 	StatusServiceUnavailable = 0x05
+	StatusHostUnreachable    = 0x06
+	StatusNetworkUnreachable = 0x07
 )
 
 var (
@@ -58,7 +61,7 @@ func (req *Request) ReadFrom(r io.Reader) (n int64, err error) {
 		return
 	}
 
-	if header[0] != Version1 {
+	if header[0] != Version1 && header[0] != Version2 {
 		err = ErrBadVersion
 		return
 	}
@@ -156,7 +159,7 @@ func (resp *Response) ReadFrom(r io.Reader) (n int64, err error) {
 		return
 	}
 
-	if header[0] != Version1 {
+	if header[0] != Version1 && header[0] != Version2 {
 		err = ErrBadVersion
 		return
 	}
