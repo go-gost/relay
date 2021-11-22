@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"net"
+	"strconv"
 )
 
 const (
@@ -160,6 +161,30 @@ type AddrFeature struct {
 
 func (f *AddrFeature) Type() uint8 {
 	return FeatureAddr
+}
+
+func (f *AddrFeature) ParseFrom(address string) error {
+	host, sport, err := net.SplitHostPort(address)
+	if err != nil {
+		return err
+	}
+	port, err := strconv.Atoi(sport)
+	if err != nil {
+		return err
+	}
+
+	f.Host = host
+	f.Port = uint16(port)
+	f.AType = AddrDomain
+	if ip := net.ParseIP(f.Host); ip != nil {
+		if ip.To4() != nil {
+			f.AType = AddrIPv4
+		} else {
+			f.AType = AddrIPv6
+		}
+	}
+
+	return nil
 }
 
 func (f *AddrFeature) Encode() ([]byte, error) {
