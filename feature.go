@@ -13,8 +13,8 @@ const (
 )
 
 const (
-	FeatureUserAuth   = 0x01
-	FeatureTargetAddr = 0x02
+	FeatureUserAuth = 0x01
+	FeatureAddr     = 0x02
 )
 
 const (
@@ -50,8 +50,8 @@ func NewFeature(t uint8, data []byte) (f Feature, err error) {
 	switch t {
 	case FeatureUserAuth:
 		f = new(UserAuthFeature)
-	case FeatureTargetAddr:
-		f = new(TargetAddrFeature)
+	case FeatureAddr:
+		f = new(AddrFeature)
 	default:
 		return nil, errors.New("unknown feature")
 	}
@@ -140,11 +140,7 @@ func (f *UserAuthFeature) Decode(b []byte) error {
 	return nil
 }
 
-// TargetAddrFeature is a relay feature,
-// it contains the IP and port the client want to connect to.
-//
-// Server may restrict the IP, port or port range that the client can relay to.
-// Server should specify a default IP:PORT for client without this feature.
+// AddrFeature is a relay feature,
 //
 // Protocol spec:
 //	+------+----------+----------+
@@ -154,19 +150,19 @@ func (f *UserAuthFeature) Decode(b []byte) error {
 //	+------+----------+----------+
 //
 //	ATYP - address type, 0x01 - IPv4, 0x03 - domain name, 0x04 - IPv6. 1 byte.
-//	ADDR - host address, IPv4, IPV6 or doman name based on ATYP. For domain name, the first byte is the length of the domain name.
-//	PORT - port number, 1 byte.
-type TargetAddrFeature struct {
+//	ADDR - host address, IPv4 (4 bytes), IPV6 (16 bytes) or doman name based on ATYP. For domain name, the first byte is the length of the domain name.
+//	PORT - port number, 2 bytes.
+type AddrFeature struct {
 	AType uint8
 	Host  string
 	Port  uint16
 }
 
-func (f *TargetAddrFeature) Type() uint8 {
-	return FeatureTargetAddr
+func (f *AddrFeature) Type() uint8 {
+	return FeatureAddr
 }
 
-func (f *TargetAddrFeature) Encode() ([]byte, error) {
+func (f *AddrFeature) Encode() ([]byte, error) {
 	var buf bytes.Buffer
 
 	switch f.AType {
@@ -203,7 +199,7 @@ func (f *TargetAddrFeature) Encode() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func (f *TargetAddrFeature) Decode(b []byte) error {
+func (f *AddrFeature) Decode(b []byte) error {
 	if len(b) < 4 {
 		return ErrShortBuffer
 	}
