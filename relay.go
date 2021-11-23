@@ -21,6 +21,8 @@ const (
 	CONNECT   uint8 = 0x01
 	BIND      uint8 = 0x02
 	ASSOCIATE uint8 = 0x03
+
+	CmdMask uint8 = 0x0F
 )
 
 // response status list
