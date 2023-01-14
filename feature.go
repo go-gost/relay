@@ -3,6 +3,7 @@ package relay
 import (
 	"bytes"
 	"encoding/binary"
+	"encoding/hex"
 	"errors"
 	"io"
 	"net"
@@ -13,15 +14,12 @@ const (
 	featureHeaderLen = 3
 )
 
-const (
-	FeatureUserAuth = 0x01
-	FeatureAddr     = 0x02
-)
+type FeatureType uint8
 
 const (
-	AddrIPv4   uint8 = 1
-	AddrDomain uint8 = 3
-	AddrIPv6   uint8 = 4
+	FeatureUserAuth FeatureType = 0x01
+	FeatureAddr     FeatureType = 0x02
+	FeatureTunnel   FeatureType = 0x03
 )
 
 var (
@@ -32,6 +30,7 @@ var (
 // Feature represents a feature the client or server owned.
 //
 // Protocol spec:
+//
 //	+------+----------+------+
 //	| TYPE |  LEN  | FEATURE |
 //	+------+-------+---------+
@@ -42,17 +41,19 @@ var (
 //	LEN - length of feature data, 2 bytes.
 //	FEATURE - feature data.
 type Feature interface {
-	Type() uint8
+	Type() FeatureType
 	Encode() ([]byte, error)
 	Decode([]byte) error
 }
 
-func NewFeature(t uint8, data []byte) (f Feature, err error) {
+func NewFeature(t FeatureType, data []byte) (f Feature, err error) {
 	switch t {
 	case FeatureUserAuth:
 		f = new(UserAuthFeature)
 	case FeatureAddr:
 		f = new(AddrFeature)
+	case FeatureTunnel:
+		f = new(TunnelFeature)
 	default:
 		return nil, errors.New("unknown feature")
 	}
@@ -69,13 +70,14 @@ func ReadFeature(r io.Reader) (Feature, error) {
 	if _, err := io.ReadFull(r, b); err != nil {
 		return nil, err
 	}
-	return NewFeature(header[0], b)
+	return NewFeature(FeatureType(header[0]), b)
 }
 
 // UserAuthFeature is a relay feature,
 // it contains the username and password for user authentication on server side.
 //
 // Protocol spec:
+//
 //	+------+----------+------+----------+
 //	| ULEN |  UNAME   | PLEN |  PASSWD  |
 //	+------+----------+------+----------+
@@ -91,7 +93,7 @@ type UserAuthFeature struct {
 	Password string
 }
 
-func (f *UserAuthFeature) Type() uint8 {
+func (f *UserAuthFeature) Type() FeatureType {
 	return FeatureUserAuth
 }
 
@@ -141,9 +143,18 @@ func (f *UserAuthFeature) Decode(b []byte) error {
 	return nil
 }
 
+type AddrType uint8
+
+const (
+	AddrIPv4   AddrType = 1
+	AddrDomain AddrType = 3
+	AddrIPv6   AddrType = 4
+)
+
 // AddrFeature is a relay feature,
 //
 // Protocol spec:
+//
 //	+------+----------+----------+
 //	| ATYP |   ADDR   |   PORT   |
 //	+------+----------+----------+
@@ -154,12 +165,12 @@ func (f *UserAuthFeature) Decode(b []byte) error {
 //	ADDR - host address, IPv4 (4 bytes), IPV6 (16 bytes) or doman name based on ATYP. For domain name, the first byte is the length of the domain name.
 //	PORT - port number, 2 bytes.
 type AddrFeature struct {
-	AType uint8
+	AType AddrType
 	Host  string
 	Port  uint16
 }
 
-func (f *AddrFeature) Type() uint8 {
+func (f *AddrFeature) Type() FeatureType {
 	return FeatureAddr
 }
 
@@ -192,28 +203,28 @@ func (f *AddrFeature) Encode() ([]byte, error) {
 
 	switch f.AType {
 	case AddrIPv4:
-		buf.WriteByte(f.AType)
+		buf.WriteByte(byte(f.AType))
 		ip4 := net.ParseIP(f.Host).To4()
 		if ip4 == nil {
 			ip4 = net.IPv4zero.To4()
 		}
 		buf.Write(ip4)
 	case AddrDomain:
-		buf.WriteByte(f.AType)
+		buf.WriteByte(byte(f.AType))
 		if len(f.Host) > 0xFF {
 			return nil, errors.New("addr maximum length exceeded")
 		}
 		buf.WriteByte(uint8(len(f.Host)))
 		buf.WriteString(f.Host)
 	case AddrIPv6:
-		buf.WriteByte(f.AType)
+		buf.WriteByte(byte(f.AType))
 		ip6 := net.ParseIP(f.Host).To16()
 		if ip6 == nil {
 			ip6 = net.IPv6zero.To16()
 		}
 		buf.Write(ip6)
 	default:
-		buf.WriteByte(AddrIPv4)
+		buf.WriteByte(byte(AddrIPv4))
 		buf.Write(net.IPv4zero.To4())
 	}
 
@@ -229,7 +240,7 @@ func (f *AddrFeature) Decode(b []byte) error {
 		return ErrShortBuffer
 	}
 
-	f.AType = b[0]
+	f.AType = AddrType(b[0])
 	pos := 1
 	switch f.AType {
 	case AddrIPv4:
@@ -258,5 +269,66 @@ func (f *AddrFeature) Decode(b []byte) error {
 
 	f.Port = binary.BigEndian.Uint16(b[pos:])
 
+	return nil
+}
+
+type TunnelID [16]byte
+
+type ConnectorID = TunnelID
+
+var zeroTunnelID TunnelID
+
+func (tid TunnelID) IsZero() bool {
+	return tid == zeroTunnelID
+}
+
+func (tid TunnelID) String() string {
+	var buf [36]byte
+	encodeHex(buf[:], tid)
+	return string(buf[:])
+}
+
+func encodeHex(dst []byte, v [16]byte) {
+	hex.Encode(dst, v[:4])
+	dst[8] = '-'
+	hex.Encode(dst[9:13], v[4:6])
+	dst[13] = '-'
+	hex.Encode(dst[14:18], v[6:8])
+	dst[18] = '-'
+	hex.Encode(dst[19:23], v[8:10])
+	dst[23] = '-'
+	hex.Encode(dst[24:], v[10:])
+}
+
+// TunnelFeature is a relay feature,
+//
+// Protocol spec:
+//
+//	+---------------------+
+//	| TUNNEL/CONNECTOR ID |
+//	+---------------------+
+//	|          16         |
+//	+---------------------+
+//
+//	ID - 16-byte tunnel ID for request or connector ID for response.
+type TunnelFeature struct {
+	ID TunnelID
+}
+
+func (f *TunnelFeature) Type() FeatureType {
+	return FeatureTunnel
+}
+
+func (f *TunnelFeature) Encode() ([]byte, error) {
+	var buf bytes.Buffer
+	buf.Write(f.ID[:])
+	return buf.Bytes(), nil
+}
+
+func (f *TunnelFeature) Decode(b []byte) error {
+	if len(b) < 16 {
+		return ErrShortBuffer
+	}
+	copy(f.ID[:], b)
 	return nil
 }
