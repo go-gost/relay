@@ -275,7 +275,7 @@ func (f *AddrFeature) Decode(b []byte) error {
 type TunnelFlag uint32
 
 const (
-	TunnelPrivate TunnelFlag = 0xffffffff
+	TunnelPrivate TunnelFlag = 0x80000000
 )
 
 // TunnelID is an identification for tunnel.
@@ -287,7 +287,7 @@ const (
 //	+------------------+
 //
 //	ID: 16-byte tunnel ID value, should be a valid UUID.
-//	FLAG: 4-byte flag, 0xffffffff for private tunnel.
+//	FLAG: 4-byte flag, 0x80000000 for private tunnel.
 type TunnelID [20]byte
 
 type ConnectorID = TunnelID
@@ -312,7 +312,7 @@ func (tid TunnelID) IsZero() bool {
 }
 
 func (tid TunnelID) IsPrivate() bool {
-	return binary.BigEndian.Uint32(tid[tunnelIDLen:]) == uint32(TunnelPrivate)
+	return binary.BigEndian.Uint32(tid[tunnelIDLen:])&uint32(TunnelPrivate) > 0
 }
 
 func (tid TunnelID) Equal(x TunnelID) bool {
