@@ -434,6 +434,18 @@ func (f *TunnelFeature) Decode(b []byte) error {
 
 type NetworkID uint16
 
+func (p NetworkID) String() string {
+	name := networkNames[p]
+	if name == "" {
+		name = networkNames[NetworkTCP]
+	}
+	return name
+}
+
+const (
+	networkIDLen = 2
+)
+
 const (
 	NetworkTCP    NetworkID = 0x0
 	NetworkUDP    NetworkID = 0x1
@@ -442,9 +454,13 @@ const (
 	NetworkSerial NetworkID = 0x11
 )
 
-const (
-	networkIDLen = 2
-)
+var networkNames = map[NetworkID]string{
+	NetworkTCP:    "tcp",
+	NetworkUDP:    "udp",
+	NetworkIP:     "ip",
+	NetworkUnix:   "unix",
+	NetworkSerial: "serial",
+}
 
 // NetworkFeature is a relay feature,
 //
