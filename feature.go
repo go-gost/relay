@@ -20,6 +20,7 @@ const (
 	FeatureUserAuth FeatureType = 0x01
 	FeatureAddr     FeatureType = 0x02
 	FeatureTunnel   FeatureType = 0x03
+	FeatureNetwork  FeatureType = 0x04
 )
 
 var (
@@ -54,6 +55,8 @@ func NewFeature(t FeatureType, data []byte) (f Feature, err error) {
 		f = new(AddrFeature)
 	case FeatureTunnel:
 		f = new(TunnelFeature)
+	case FeatureNetwork:
+		f = new(NetworkFeature)
 	default:
 		return nil, errors.New("unknown feature")
 	}
@@ -177,11 +180,11 @@ func (f *AddrFeature) Type() FeatureType {
 func (f *AddrFeature) ParseFrom(address string) error {
 	host, sport, err := net.SplitHostPort(address)
 	if err != nil {
-		return err
+		host = address
 	}
 	port, err := strconv.Atoi(sport)
 	if err != nil {
-		return err
+		port = 0
 	}
 
 	f.Host = host
@@ -408,7 +411,7 @@ func (cid ConnectorID) String() string {
 //
 //	ID - 16-byte tunnel ID for request or connector ID for response.
 type TunnelFeature struct {
-	ID [16]byte
+	ID [tunnelIDLen]byte
 }
 
 func (f *TunnelFeature) Type() FeatureType {
@@ -426,5 +429,52 @@ func (f *TunnelFeature) Decode(b []byte) error {
 		return ErrShortBuffer
 	}
 	copy(f.ID[:], b)
+	return nil
+}
+
+type NetworkID uint16
+
+const (
+	NetworkTCP    NetworkID = 0x0
+	NetworkUDP    NetworkID = 0x1
+	NetworkIP     NetworkID = 0x2
+	NetworkUnix   NetworkID = 0x10
+	NetworkSerial NetworkID = 0x11
+)
+
+const (
+	networkIDLen = 2
+)
+
+// NetworkFeature is a relay feature,
+//
+// Protocol spec:
+//
+//	+---------------------+
+//	|       NETWORK       |
+//	+---------------------+
+//	|          2          |
+//	+---------------------+
+//
+//	NETWORK - 2-byte network ID.
+type NetworkFeature struct {
+	Network NetworkID
+}
+
+func (f *NetworkFeature) Type() FeatureType {
+	return FeatureNetwork
+}
+
+func (f *NetworkFeature) Encode() ([]byte, error) {
+	var buf [networkIDLen]byte
+	binary.BigEndian.PutUint16(buf[:], uint16(f.Network))
+	return buf[:], nil
+}
+
+func (f *NetworkFeature) Decode(b []byte) error {
+	if len(b) < networkIDLen {
+		return ErrShortBuffer
+	}
+	f.Network = NetworkID(binary.BigEndian.Uint16(b))
 	return nil
 }
