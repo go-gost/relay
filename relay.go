@@ -21,6 +21,7 @@ const (
 	CmdMask      CmdType = 0x0F
 
 	// FUDP is a command flag indicating that the request is UDP-oriented.
+	// DEPRECATED by network feature.
 	FUDP CmdType = 0x80
 )
 

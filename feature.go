@@ -275,22 +275,24 @@ func (f *AddrFeature) Decode(b []byte) error {
 	return nil
 }
 
-type TunnelFlag uint32
+type TunnelFlag uint8
 
 const (
-	TunnelPrivate TunnelFlag = 0x80000000
+	TunnelPrivate TunnelFlag = 0x80
 )
 
 // TunnelID is an identification for tunnel.
 //
-//	+------------------+
-//	|   ID   |  FLAG   |
-//	+------------------+
-//	|   16   |    4    |
-//	+------------------+
+//	+------------------+-------+--------+
+//	|   ID   |  FLAG   |  RSV  | WEIGHT |
+//	+------------------+-------+--------+
+//	|   16   |    1    |   2   |    1   |
+//	+------------------+-------+--------+
 //
 //	ID: 16-byte tunnel ID value, should be a valid UUID.
-//	FLAG: 4-byte flag, 0x80000000 for private tunnel.
+//	FLAG: 1-byte flag, 0x80 for private tunnel.
+//	RSV: 2-byte reserved field.
+//	WEIGHT: tunnel weight
 type TunnelID [20]byte
 
 var zeroTunnelID TunnelID
@@ -304,7 +306,7 @@ func NewTunnelID(v []byte) (tid TunnelID) {
 
 func NewPrivateTunnelID(v []byte) (tid TunnelID) {
 	copy(tid[:], v[:])
-	binary.BigEndian.PutUint32(tid[tunnelIDLen:], uint32(TunnelPrivate))
+	tid = tid.SetPrivate(true)
 	return
 }
 
@@ -318,7 +320,25 @@ func (tid TunnelID) IsZero() bool {
 }
 
 func (tid TunnelID) IsPrivate() bool {
-	return binary.BigEndian.Uint32(tid[tunnelIDLen:])&uint32(TunnelPrivate) > 0
+	return tid[tunnelIDLen]&byte(TunnelPrivate) > 0
+}
+
+func (tid TunnelID) SetPrivate(private bool) TunnelID {
+	if private {
+		tid[tunnelIDLen] |= byte(TunnelPrivate)
+	} else {
+		tid[tunnelIDLen] &= ^byte(TunnelPrivate)
+	}
+	return tid
+}
+
+func (tid TunnelID) SetWeight(weight uint8) TunnelID {
+	tid[19] = weight
+	return tid
+}
+
+func (tid TunnelID) Weight() uint8 {
+	return tid[19]
 }
 
 func (tid TunnelID) Equal(x TunnelID) bool {
@@ -343,22 +363,24 @@ func encodeHex(dst []byte, v []byte) {
 	hex.Encode(dst[24:], v[10:])
 }
 
-type ConnectorFlag uint32
+type ConnectorFlag uint8
 
 const (
-	ConnectorUDP = 0x01
+	ConnectorUDP ConnectorFlag = 0x01
 )
 
 // ConnectorID is an identification for tunnel connection.
 //
-//	+------------------+
-//	|   ID   |  FLAG   |
-//	+------------------+
-//	|   16   |    4    |
-//	+------------------+
+//	+------------------+-------+--------+
+//	|   ID   |  FLAG   |  RSV  | WEIGHT |
+//	+------------------+-------+--------+
+//	|   16   |    1    |   2   |    1   |
+//	+------------------+-------+--------+
 //
 //	ID: 16-byte connector ID value, should be a valid UUID.
-//	FLAG: 4-byte flag, 0x1 for UDP connector.
+//	FLAG: 1-byte flag, 0x1 for UDP connector.
+//	RSV: 2-byte reserved field.
+//	WEIGHT: connector weight
 type ConnectorID [20]byte
 
 const connectorIDLen = 16
@@ -372,7 +394,7 @@ func NewConnectorID(v []byte) (cid ConnectorID) {
 
 func NewUDPConnectorID(v []byte) (cid ConnectorID) {
 	copy(cid[:], v[:])
-	binary.BigEndian.PutUint32(cid[connectorIDLen:], uint32(ConnectorUDP))
+	cid = cid.SetUDP(true)
 	return
 }
 
@@ -386,7 +408,25 @@ func (cid ConnectorID) IsZero() bool {
 }
 
 func (cid ConnectorID) IsUDP() bool {
-	return binary.BigEndian.Uint32(cid[connectorIDLen:])&uint32(ConnectorUDP) > 0
+	return cid[connectorIDLen]&byte(ConnectorUDP) > 0
+}
+
+func (cid ConnectorID) SetUDP(udp bool) ConnectorID {
+	if udp {
+		cid[connectorIDLen] |= byte(ConnectorUDP)
+	} else {
+		cid[connectorIDLen] &= ^byte(ConnectorUDP)
+	}
+	return cid
+}
+
+func (cid ConnectorID) SetWeight(weight uint8) ConnectorID {
+	cid[19] = weight
+	return cid
+}
+
+func (cid ConnectorID) Weight() uint8 {
+	return cid[19]
 }
 
 func (cid ConnectorID) Equal(x ConnectorID) bool {
