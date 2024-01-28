@@ -446,12 +446,12 @@ func (cid ConnectorID) String() string {
 //	+---------------------+
 //	| TUNNEL/CONNECTOR ID |
 //	+---------------------+
-//	|          16         |
+//	|          20         |
 //	+---------------------+
 //
-//	ID - 16-byte tunnel ID for request or connector ID for response.
+//	ID - 20-byte tunnel ID for request or connector ID for response.
 type TunnelFeature struct {
-	ID [tunnelIDLen]byte
+	ID [20]byte
 }
 
 func (f *TunnelFeature) Type() FeatureType {
