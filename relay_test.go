@@ -2,6 +2,7 @@ package relay
 
 import (
 	"bytes"
+	"io"
 	"testing"
 )
 
@@ -158,3 +159,135 @@ func TestWriteToMaxFeatureLength(t *testing.T) {
 		t.Errorf("expected n=0 on error, got n=%d", n)
 	}
 }
+
+func TestRequestReadFromHeaderError(t *testing.T) {
+	var req Request
+	r := &errReader{err: io.ErrUnexpectedEOF}
+	_, err := req.ReadFrom(r)
+	if err != io.ErrUnexpectedEOF {
+		t.Errorf("expected ErrUnexpectedEOF for header read, got %v", err)
+	}
+}
+
+func TestRequestReadFromBodyError(t *testing.T) {
+	var req Request
+	// Valid header with flen=100, but reader fails after header
+	r := io.MultiReader(
+		bytes.NewReader([]byte{Version1, byte(CmdConnect), 0, 100}),
+		&errReader{err: io.ErrUnexpectedEOF},
+	)
+	_, err := req.ReadFrom(r)
+	if err != io.ErrUnexpectedEOF {
+		t.Errorf("expected ErrUnexpectedEOF for body read, got %v", err)
+	}
+}
+
+func TestRequestWriteToEncodeError(t *testing.T) {
+	req := Request{
+		Version: Version1,
+		Cmd:     CmdConnect,
+		Features: []Feature{
+			&UserAuthFeature{Username: string(make([]byte, 256))},
+		},
+	}
+	var buf bytes.Buffer
+	_, err := req.WriteTo(&buf)
+	if err == nil {
+		t.Error("expected encode error for username > 255")
+	}
+}
+
+func TestResponseReadFromHeaderError(t *testing.T) {
+	var resp Response
+	r := &errReader{err: io.ErrUnexpectedEOF}
+	_, err := resp.ReadFrom(r)
+	if err != io.ErrUnexpectedEOF {
+		t.Errorf("expected ErrUnexpectedEOF for header read, got %v", err)
+	}
+}
+
+func TestResponseReadFromBodyError(t *testing.T) {
+	var resp Response
+	// Valid header with flen=100, but reader fails after header
+	r := io.MultiReader(
+		bytes.NewReader([]byte{Version1, StatusOK, 0, 100}),
+		&errReader{err: io.ErrUnexpectedEOF},
+	)
+	_, err := resp.ReadFrom(r)
+	if err != io.ErrUnexpectedEOF {
+		t.Errorf("expected ErrUnexpectedEOF for body read, got %v", err)
+	}
+}
+
+func TestResponseReadFromBadVersion(t *testing.T) {
+	var resp Response
+	buf := bytes.NewBuffer([]byte{0x02, StatusOK, 0, 0})
+	_, err := resp.ReadFrom(buf)
+	if err != ErrBadVersion {
+		t.Errorf("expected ErrBadVersion, got %v", err)
+	}
+}
+
+func TestResponseWriteToEncodeError(t *testing.T) {
+	resp := Response{
+		Version: Version1,
+		Status:  StatusOK,
+		Features: []Feature{
+			&UserAuthFeature{Username: string(make([]byte, 256))},
+		},
+	}
+	var buf bytes.Buffer
+	_, err := resp.WriteTo(&buf)
+	if err == nil {
+		t.Error("expected encode error for username > 255")
+	}
+}
+
+func TestResponseWriteToMaxFeatureLength(t *testing.T) {
+	resp := Response{
+		Version: Version1,
+		Status:  StatusOK,
+		Features: []Feature{
+			&NetworkFeature{Network: NetworkTCP},
+		},
+	}
+	maxFeatures := (0xFFFF / (featureHeaderLen + networkIDLen)) + 1
+	for i := 0; i < maxFeatures; i++ {
+		resp.Features = append(resp.Features, &NetworkFeature{Network: NetworkTCP})
+	}
+
+	var buf bytes.Buffer
+	n, err := resp.WriteTo(&buf)
+	if err == nil {
+		t.Error("expected error for features exceeding maximum length")
+	}
+	if n != 0 {
+		t.Errorf("expected n=0 on error, got n=%d", n)
+	}
+}
+
+func TestReadFeaturesEmpty(t *testing.T) {
+	fs, err := readFeatures(nil)
+	if err != nil {
+		t.Errorf("expected no error for empty input, got %v", err)
+	}
+	if len(fs) != 0 {
+		t.Errorf("expected 0 features, got %d", len(fs))
+	}
+}
+
+func TestRequestReadFromMalformedFeatures(t *testing.T) {
+	// Feature header says 10 bytes of data but only 3 bytes follow
+	data := []byte{
+		Version1, byte(CmdConnect), 0, 6, // header: flen=6
+		byte(FeatureUserAuth), 0, 10, // feature header: type=userauth, len=10
+		// Only 3 bytes of actual feature data (need 10)
+		0x01, 'a', 'b',
+	}
+	var req Request
+	_, err := req.ReadFrom(bytes.NewReader(data))
+	if err == nil {
+		t.Error("expected error for malformed feature data")
+	}
+}
+

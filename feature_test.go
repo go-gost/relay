@@ -2,6 +2,7 @@ package relay
 
 import (
 	"bytes"
+	"io"
 	"testing"
 )
 
@@ -386,3 +387,172 @@ func TestZeroConnectorID(t *testing.T) {
 		t.Error("zero ConnectorID should be zero")
 	}
 }
+
+func TestUserAuthFeatureDecodeUlenPastBuffer(t *testing.T) {
+	var f UserAuthFeature
+	// ulen=10 but only 3 bytes available after the length byte
+	err := f.Decode([]byte{10, 'a', 'b'})
+	if err != ErrShortBuffer {
+		t.Errorf("expected ErrShortBuffer for ulen past buffer, got %v", err)
+	}
+}
+
+func TestUserAuthFeatureDecodePlenPastBuffer(t *testing.T) {
+	var f UserAuthFeature
+	// ulen=2 (valid), then plen=5 but only 1 byte available after plen
+	err := f.Decode([]byte{2, 'a', 'b', 5, 'c'})
+	if err != ErrShortBuffer {
+		t.Errorf("expected ErrShortBuffer for plen past buffer, got %v", err)
+	}
+}
+
+func TestAddrFeatureEncodeIPv4NilFallback(t *testing.T) {
+	f := &AddrFeature{AType: AddrIPv4, Host: "not-an-ip", Port: 8080}
+	b, err := f.Encode()
+	if err != nil {
+		t.Fatalf("Encode should fallback to IPv4zero, got error: %v", err)
+	}
+	if len(b) != 7 {
+		t.Errorf("length: got %d, want 7", len(b))
+	}
+}
+
+func TestAddrFeatureEncodeDomainTooLong(t *testing.T) {
+	f := &AddrFeature{AType: AddrDomain, Host: string(make([]byte, 256)), Port: 8080}
+	_, err := f.Encode()
+	if err == nil {
+		t.Error("expected error for domain exceeding 255 bytes")
+	}
+}
+
+func TestAddrFeatureEncodeIPv6NilFallback(t *testing.T) {
+	f := &AddrFeature{AType: AddrIPv6, Host: "not-an-ip", Port: 8080}
+	b, err := f.Encode()
+	if err != nil {
+		t.Fatalf("Encode should fallback to IPv6zero, got error: %v", err)
+	}
+	if len(b) != 19 {
+		t.Errorf("length: got %d, want 19", len(b))
+	}
+}
+
+func TestAddrFeatureDecodeShortIPv4(t *testing.T) {
+	var f AddrFeature
+	// Need 1(type)+4(ipv4)+2(port)=7 bytes, provide only 6
+	err := f.Decode([]byte{byte(AddrIPv4), 1, 2, 3, 4, 5})
+	if err != ErrShortBuffer {
+		t.Errorf("expected ErrShortBuffer for short IPv4, got %v", err)
+	}
+}
+
+func TestAddrFeatureDecodeShortIPv6(t *testing.T) {
+	var f AddrFeature
+	// Need 1(type)+16(ipv6)+2(port)=19 bytes, provide 18
+	b := make([]byte, 18)
+	b[0] = byte(AddrIPv6)
+	err := f.Decode(b)
+	if err != ErrShortBuffer {
+		t.Errorf("expected ErrShortBuffer for short IPv6, got %v", err)
+	}
+}
+
+func TestAddrFeatureDecodeShortDomain(t *testing.T) {
+	var f AddrFeature
+	// alen=5 declared but buffer only 8 bytes (need 1+1+5+2=9)
+	b := []byte{byte(AddrDomain), 5, 'a', 'b', 'c', 'd', 'e', 0}
+	err := f.Decode(b)
+	if err != ErrShortBuffer {
+		t.Errorf("expected ErrShortBuffer for short domain, got %v", err)
+	}
+}
+
+func TestTunnelIDSetPrivateFalse(t *testing.T) {
+	tid := NewPrivateTunnelID(bytes.Repeat([]byte{0xAB}, 20))
+	if !tid.IsPrivate() {
+		t.Fatal("expected private after NewPrivateTunnelID")
+	}
+	cleared := tid.SetPrivate(false)
+	if cleared.IsPrivate() {
+		t.Error("expected non-private after SetPrivate(false)")
+	}
+	if !tid.IsPrivate() {
+		t.Error("original should not be modified (value type)")
+	}
+}
+
+func TestConnectorIDSetUDPFalse(t *testing.T) {
+	cid := NewUDPConnectorID(bytes.Repeat([]byte{0xCD}, 20))
+	if !cid.IsUDP() {
+		t.Fatal("expected UDP after NewUDPConnectorID")
+	}
+	cleared := cid.SetUDP(false)
+	if cleared.IsUDP() {
+		t.Error("expected non-UDP after SetUDP(false)")
+	}
+	if !cid.IsUDP() {
+		t.Error("original should not be modified (value type)")
+	}
+}
+
+func TestConnectorIDString(t *testing.T) {
+	cid := NewConnectorID(bytes.Repeat([]byte{0xAB}, 16))
+	s := cid.String()
+	if len(s) != 36 {
+		t.Errorf("String length: got %d, want 36 (%s)", len(s), s)
+	}
+}
+
+func TestConnectorIDEqual(t *testing.T) {
+	v := bytes.Repeat([]byte{0xEF}, 16)
+	cid := NewConnectorID(v)
+	same := NewConnectorID(v)
+	if !cid.Equal(same) {
+		t.Error("same IDs should be equal")
+	}
+}
+
+func TestNewUDPConnectorID(t *testing.T) {
+	v := make([]byte, 20)
+	copy(v, bytes.Repeat([]byte{0xAA}, 16))
+	v[19] = 7
+
+	cid := NewUDPConnectorID(v)
+	if !cid.IsUDP() {
+		t.Error("should be UDP")
+	}
+	if cid.Weight() != 7 {
+		t.Errorf("Weight: got %d, want 7", cid.Weight())
+	}
+}
+
+func TestNetworkFeatureDecodeShortBuffer(t *testing.T) {
+	var f NetworkFeature
+	err := f.Decode([]byte{0x00})
+	if err != ErrShortBuffer {
+		t.Errorf("expected ErrShortBuffer for 1-byte buffer, got %v", err)
+	}
+}
+
+func TestReadFeatureHeaderError(t *testing.T) {
+	r := &errReader{err: io.ErrUnexpectedEOF}
+	_, err := ReadFeature(r)
+	if err != io.ErrUnexpectedEOF {
+		t.Errorf("expected ErrUnexpectedEOF for header read, got %v", err)
+	}
+}
+
+func TestReadFeatureBodyError(t *testing.T) {
+	// Header says 100 bytes of feature data, but reader fails after header
+	r := io.MultiReader(
+		bytes.NewReader([]byte{byte(FeatureUserAuth), 0, 100}), // header only
+		&errReader{err: io.ErrUnexpectedEOF},
+	)
+	_, err := ReadFeature(r)
+	if err != io.ErrUnexpectedEOF {
+		t.Errorf("expected ErrUnexpectedEOF for body read, got %v", err)
+	}
+}
+
+type errReader struct{ err error }
+
+func (r *errReader) Read([]byte) (int, error) { return 0, r.err }
