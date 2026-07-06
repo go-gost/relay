@@ -211,8 +211,8 @@ func (f *AddrFeature) ParseFrom(address string) error {
 	if aerr != nil && serr == nil {
 		return aerr
 	}
-	if host == "" {
-		return errors.New("empty host")
+	if address == "" {
+		return errors.New("empty address")
 	}
 
 	f.Host = host

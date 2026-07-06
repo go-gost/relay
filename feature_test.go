@@ -125,6 +125,8 @@ func TestAddrFeatureParseFrom(t *testing.T) {
 		{"no port", "1.2.3.4", "1.2.3.4", 0, AddrIPv4, false},
 		{"invalid port", "host:abc", "", 0, AddrDomain, true},
 		{"empty", "", "", 0, AddrDomain, true},
+		{"port only no host", ":0", "", 0, AddrDomain, false},
+		{"port only", ":8080", "", 8080, AddrDomain, false},
 	}
 
 	for _, tt := range tests {
