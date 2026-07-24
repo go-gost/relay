@@ -634,4 +634,104 @@ func TestUnknownFeatureInRequest(t *testing.T) {
 	}
 }
 
+func TestMetadataFeature(t *testing.T) {
+	tests := []struct {
+		name    string
+		kvs     map[string]string
+		wantErr bool
+	}{
+		{"empty", nil, false},
+		{"single", map[string]string{"k": "v"}, false},
+		{"multiple", map[string]string{"a": "1", "b": "2", "c": "3"}, false},
+		{"unicode", map[string]string{"键": "值"}, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := &MetadataFeature{KVs: tt.kvs}
+			if f.Type() != FeatureMetadata {
+				t.Errorf("Type: got %d, want %d", f.Type(), FeatureMetadata)
+			}
+
+			b, err := f.Encode()
+			if err != nil {
+				t.Fatalf("Encode error: %v", err)
+			}
+			if tt.kvs == nil && len(b) != 2 {
+				t.Errorf("empty encode: got %d bytes, want 2", len(b))
+			}
+
+			var decoded MetadataFeature
+			if err := decoded.Decode(b); err != nil {
+				t.Fatalf("Decode error: %v", err)
+			}
+			if len(decoded.KVs) != len(tt.kvs) {
+				t.Errorf("KVs count: got %d, want %d", len(decoded.KVs), len(tt.kvs))
+			}
+			for k, v := range tt.kvs {
+				if decoded.KVs[k] != v {
+					t.Errorf("KV[%q]: got %q, want %q", k, decoded.KVs[k], v)
+				}
+			}
+		})
+	}
+}
+
+func TestMetadataFeatureEncodeDoesNotMutate(t *testing.T) {
+	kvs := map[string]string{"a": "1", "b": "2"}
+	f := &MetadataFeature{KVs: kvs}
+	f.Encode()
+	if len(f.KVs) != 2 {
+		t.Errorf("Encode mutated receiver: got %d KVs, want 2", len(f.KVs))
+	}
+}
+
+func TestMetadataFeatureEncodeTruncateMaxPairs(t *testing.T) {
+	kvs := make(map[string]string, maxMetadataPairs+5)
+	for i := 0; i < maxMetadataPairs+5; i++ {
+		kvs[string(rune('a'+i%26))+string(rune('0'+i/26))] = "v"
+	}
+	f := &MetadataFeature{KVs: kvs}
+	b, err := f.Encode()
+	if err != nil {
+		t.Fatalf("Encode error: %v", err)
+	}
+	var decoded MetadataFeature
+	if err := decoded.Decode(b); err != nil {
+		t.Fatalf("Decode error: %v", err)
+	}
+	if len(decoded.KVs) > maxMetadataPairs {
+		t.Errorf("got %d KVs, want at most %d", len(decoded.KVs), maxMetadataPairs)
+	}
+}
+
+func TestMetadataFeatureEncodeTruncateKVSize(t *testing.T) {
+	big := string(make([]byte, maxMetadataKVSize+10))
+	f := &MetadataFeature{KVs: map[string]string{big: big}}
+	b, err := f.Encode()
+	if err != nil {
+		t.Fatalf("Encode error: %v", err)
+	}
+	var decoded MetadataFeature
+	if err := decoded.Decode(b); err != nil {
+		t.Fatalf("Decode error: %v", err)
+	}
+	for k, v := range decoded.KVs {
+		if len(k) > maxMetadataKVSize || len(v) > maxMetadataKVSize {
+			t.Errorf("key/val not truncated: klen=%d, vlen=%d", len(k), len(v))
+		}
+	}
+}
+
+func TestMetadataFeatureDecodeShortBuffer(t *testing.T) {
+	var f MetadataFeature
+	if err := f.Decode([]byte{0}); err != ErrShortBuffer {
+		t.Errorf("expected ErrShortBuffer for 1-byte, got %v", err)
+	}
+	// Declares 3 pairs, truncated after first key length.
+	if err := f.Decode([]byte{0, 3, 0, 5, 'h', 'e', 'l', 'l', 'o'}); err != ErrShortBuffer {
+		t.Errorf("expected ErrShortBuffer for truncated pairs, got %v", err)
+	}
+}
+
 func (r *errReader) Read([]byte) (int, error) { return 0, r.err }

@@ -42,6 +42,8 @@ var (
 	ErrBadVersion = errors.New("bad version")
 )
 
+var byteOrder = binary.BigEndian
+
 // Request is a relay client request.
 //
 // Protocol spec:
@@ -77,7 +79,7 @@ func (req *Request) ReadFrom(r io.Reader) (n int64, err error) {
 	req.Version = header[0]
 	req.Cmd = CmdType(header[1])
 
-	flen := int(binary.BigEndian.Uint16(header[2:]))
+	flen := int(byteOrder.Uint16(header[2:]))
 
 	if flen == 0 {
 		return
@@ -111,12 +113,12 @@ func (req *Request) WriteTo(w io.Writer) (n int64, err error) {
 	buf := make([]byte, 4+flen)
 	buf[0] = req.Version
 	buf[1] = byte(req.Cmd)
-	binary.BigEndian.PutUint16(buf[2:4], uint16(flen))
+	byteOrder.PutUint16(buf[2:4], uint16(flen))
 
 	pos := 4
 	for i, f := range req.Features {
 		buf[pos] = byte(f.Type())
-		binary.BigEndian.PutUint16(buf[pos+1:pos+3], uint16(len(encoded[i])))
+		byteOrder.PutUint16(buf[pos+1:pos+3], uint16(len(encoded[i])))
 		copy(buf[pos+3:], encoded[i])
 		pos += featureHeaderLen + len(encoded[i])
 	}
@@ -160,7 +162,7 @@ func (resp *Response) ReadFrom(r io.Reader) (n int64, err error) {
 	resp.Version = header[0]
 	resp.Status = header[1]
 
-	flen := int(binary.BigEndian.Uint16(header[2:]))
+	flen := int(byteOrder.Uint16(header[2:]))
 
 	if flen == 0 {
 		return
@@ -195,12 +197,12 @@ func (resp *Response) WriteTo(w io.Writer) (n int64, err error) {
 	buf := make([]byte, 4+flen)
 	buf[0] = resp.Version
 	buf[1] = resp.Status
-	binary.BigEndian.PutUint16(buf[2:4], uint16(flen))
+	byteOrder.PutUint16(buf[2:4], uint16(flen))
 
 	pos := 4
 	for i, f := range resp.Features {
 		buf[pos] = byte(f.Type())
-		binary.BigEndian.PutUint16(buf[pos+1:pos+3], uint16(len(encoded[i])))
+		byteOrder.PutUint16(buf[pos+1:pos+3], uint16(len(encoded[i])))
 		copy(buf[pos+3:], encoded[i])
 		pos += featureHeaderLen + len(encoded[i])
 	}

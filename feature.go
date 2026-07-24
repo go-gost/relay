@@ -21,14 +21,20 @@ const (
 	FeatureAddr     FeatureType = 0x02
 	FeatureTunnel   FeatureType = 0x03
 	FeatureNetwork  FeatureType = 0x04
+	FeatureMetadata FeatureType = 0x05
+)
+
+const (
+	maxMetadataPairs  = 20
+	maxMetadataKVSize = 0xFF
 )
 
 var (
-	ErrShortBuffer     = errors.New("short buffer")
-	ErrBadAddrType     = errors.New("bad address type")
-	ErrBadTunnelID     = errors.New("bad tunnel id")
-	ErrBadConnectorID  = errors.New("bad connector id")
-	ErrBadNetworkID    = errors.New("bad network id")
+	ErrShortBuffer    = errors.New("short buffer")
+	ErrBadAddrType    = errors.New("bad address type")
+	ErrBadTunnelID    = errors.New("bad tunnel id")
+	ErrBadConnectorID = errors.New("bad connector id")
+	ErrBadNetworkID   = errors.New("bad network id")
 )
 
 // Feature represents a feature the client or server owned.
@@ -60,6 +66,8 @@ func NewFeature(t FeatureType, data []byte) (f Feature, err error) {
 		f = new(TunnelFeature)
 	case FeatureNetwork:
 		f = new(NetworkFeature)
+	case FeatureMetadata:
+		f = new(MetadataFeature)
 	default:
 		f = &OpaqueFeature{ftype: t}
 	}
@@ -91,12 +99,114 @@ func (f *OpaqueFeature) Decode(b []byte) error {
 	return nil
 }
 
+// MetadataFeature carries key-value metadata during tunnel negotiation.
+//
+// Wire format:
+//
+//	+--------+----------+---------+----------+---------+
+//	| NKEYS  |  KEYLEN  |   KEY   |  VALLEN  |   VAL   |
+//	+--------+----------+---------+----------+---------+
+//	|   2    |    2     | Variable|    2     | Variable|
+//	+--------+----------+---------+----------+---------+
+//
+// NKEYS — number of key-value pairs, 2 bytes.
+// KEYLEN — length of the key, 2 bytes.
+// KEY — key, variable length.
+// VALLEN — length of the value, 2 bytes.
+// VAL — value, variable length.
+// The pairs repeat for NKEYS times.
+type MetadataFeature struct {
+	KVs map[string]string
+}
+
+func (f *MetadataFeature) Type() FeatureType {
+	return FeatureMetadata
+}
+
+func (f *MetadataFeature) Encode() ([]byte, error) {
+	if len(f.KVs) == 0 {
+		return []byte{0, 0}, nil
+	}
+	kvs := f.KVs
+	if len(kvs) > maxMetadataPairs {
+		kvs = shrinkKVMap(f.KVs, maxMetadataPairs)
+	}
+
+	var buf bytes.Buffer
+	binary.Write(&buf, byteOrder, uint16(len(kvs)))
+
+	for k, v := range kvs {
+		if len(k) > maxMetadataKVSize {
+			k = k[:maxMetadataKVSize]
+		}
+		if len(v) > maxMetadataKVSize {
+			v = v[:maxMetadataKVSize]
+		}
+		binary.Write(&buf, byteOrder, uint16(len(k)))
+		buf.WriteString(k)
+		binary.Write(&buf, byteOrder, uint16(len(v)))
+		buf.WriteString(v)
+	}
+	return buf.Bytes(), nil
+}
+
+func (f *MetadataFeature) Decode(b []byte) error {
+	if len(b) < 2 {
+		return ErrShortBuffer
+	}
+	pos := 0
+	n := int(byteOrder.Uint16(b[pos:]))
+	pos += 2
+	if n > maxMetadataPairs {
+		n = maxMetadataPairs
+	}
+
+	f.KVs = make(map[string]string, n)
+	for i := 0; i < n; i++ {
+		if pos+2 > len(b) {
+			return ErrShortBuffer
+		}
+		klen := int(byteOrder.Uint16(b[pos:]))
+		pos += 2
+		if pos+klen > len(b) {
+			return ErrShortBuffer
+		}
+		k := string(b[pos : pos+klen])
+		pos += klen
+
+		if pos+2 > len(b) {
+			return ErrShortBuffer
+		}
+		vlen := int(byteOrder.Uint16(b[pos:]))
+		pos += 2
+		if pos+vlen > len(b) {
+			return ErrShortBuffer
+		}
+		v := string(b[pos : pos+vlen])
+		pos += vlen
+		f.KVs[k] = v
+	}
+	return nil
+}
+
+// shrinkKVMap returns a new map with at most n entries from src.
+func shrinkKVMap(src map[string]string, n int) map[string]string {
+	dst := make(map[string]string, n)
+	for k, v := range src {
+		if len(dst) >= n {
+			break
+		}
+		dst[k] = v
+	}
+	return dst
+}
+
 func ReadFeature(r io.Reader) (Feature, error) {
 	var header [featureHeaderLen]byte
 	if _, err := io.ReadFull(r, header[:]); err != nil {
 		return nil, err
 	}
-	b := make([]byte, int(binary.BigEndian.Uint16(header[1:3])))
+	b := make([]byte, int(byteOrder.Uint16(header[1:3])))
 	if _, err := io.ReadFull(r, b); err != nil {
 		return nil, err
 	}
@@ -246,7 +356,7 @@ func (f *AddrFeature) Encode() ([]byte, error) {
 			}
 		}
 		copy(buf[1:], ip4)
-		binary.BigEndian.PutUint16(buf[5:], f.Port)
+		byteOrder.PutUint16(buf[5:], f.Port)
 		return buf, nil
 	case AddrIPv6:
 		buf := make([]byte, 19)
@@ -261,7 +371,7 @@ func (f *AddrFeature) Encode() ([]byte, error) {
 			}
 		}
 		copy(buf[1:], ip6)
-		binary.BigEndian.PutUint16(buf[17:], f.Port)
+		byteOrder.PutUint16(buf[17:], f.Port)
 		return buf, nil
 	case AddrDomain:
 		if len(f.Host) > 0xFF {
@@ -271,7 +381,7 @@ func (f *AddrFeature) Encode() ([]byte, error) {
 		buf[0] = byte(AddrDomain)
 		buf[1] = uint8(len(f.Host))
 		copy(buf[2:], f.Host)
-		binary.BigEndian.PutUint16(buf[2+len(f.Host):], f.Port)
+		byteOrder.PutUint16(buf[2+len(f.Host):], f.Port)
 		return buf, nil
 	default:
 		return nil, ErrBadAddrType
@@ -313,7 +423,7 @@ func (f *AddrFeature) Decode(b []byte) error {
 		return ErrBadAddrType
 	}
 
-	f.Port = binary.BigEndian.Uint16(b[pos:])
+	f.Port = byteOrder.Uint16(b[pos:])
 
 	return nil
 }
@@ -566,7 +676,7 @@ func (f *NetworkFeature) Type() FeatureType {
 
 func (f *NetworkFeature) Encode() ([]byte, error) {
 	var buf [networkIDLen]byte
-	binary.BigEndian.PutUint16(buf[:], uint16(f.Network))
+	byteOrder.PutUint16(buf[:], uint16(f.Network))
 	return buf[:], nil
 }
 
@@ -574,6 +684,6 @@ func (f *NetworkFeature) Decode(b []byte) error {
 	if len(b) < networkIDLen {
 		return ErrShortBuffer
 	}
-	f.Network = NetworkID(binary.BigEndian.Uint16(b))
+	f.Network = NetworkID(byteOrder.Uint16(b))
 	return nil
 }

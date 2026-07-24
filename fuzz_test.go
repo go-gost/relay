@@ -101,6 +101,23 @@ func FuzzNetworkFeatureDecode(f *testing.F) {
 	})
 }
 
+// FuzzMetadataFeatureDecode parses the key-value metadata wire format (NKEYS +
+// repeated KEYLEN/KEY/VALLEN/VAL). A panic from a crafted byte stream is a DoS
+// on the relay. Seeds cover empty list, single/multiple pairs, short buffer, and
+// truncated key/value lengths.
+func FuzzMetadataFeatureDecode(f *testing.F) {
+	f.Add([]byte{})
+	f.Add([]byte{0})
+	f.Add([]byte{0, 0})                                   // empty
+	f.Add([]byte{0, 1, 0, 1, 'k', 0, 1, 'v'})            // single pair
+	f.Add([]byte{0, 2, 0, 1, 'a', 0, 1, '1', 0, 1, 'b', 0, 1, '2'}) // two pairs
+	f.Add([]byte{0, 3, 0, 5, 'h', 'e', 'l', 'l', 'o'})   // truncated
+	f.Fuzz(func(t *testing.T, b []byte) {
+		f := &MetadataFeature{}
+		_ = f.Decode(b) // must not panic / read out of bounds
+	})
+}
+
 // FuzzOpaqueFeatureDecode exercises the forward-compat path for unknown feature
 // types: it must store the raw bytes verbatim (no panic, no interpretation) so
 // the frame round-trips. The fuzzer must not find a panic, and after Decode the
